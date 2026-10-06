@@ -1,0 +1,26 @@
+{
+  "rewrites": [
+    { "source": "/p/:id", "destination": "/api/view?id=:id" },
+    { "source": "/raw/:id", "destination": "/api/raw?id=:id" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cleanup",
+      "schedule": "*/30 * * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "x-content-type-options", "value": "nosniff" },
+        { "key": "referrer-policy", "value": "no-referrer" },
+        { "key": "x-frame-options", "value": "DENY" },
+        {
+          "key": "content-security-policy",
+          "value": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        }
+      ]
+    }
+  ]
+}

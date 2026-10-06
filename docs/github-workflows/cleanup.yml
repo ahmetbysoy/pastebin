@@ -1,0 +1,25 @@
+name: Cleanup expired pastes
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    # Runs only when SITE_URL + CRON_SECRET are configured as repository secrets.
+    # (Optional: Vercel Cron in vercel.json already calls /api/cleanup every 30 min;
+    #  this workflow is a second safety net per the project spec.)
+    if: ${{ secrets.SITE_URL != '' && secrets.CRON_SECRET != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger cleanup endpoint
+        run: |
+          STATUS=$(curl -s -o /tmp/cleanup.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.SITE_URL }}/api/cleanup")
+          cat /tmp/cleanup.json
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Cleanup failed with HTTP $STATUS"
+            exit 1
+          fi
