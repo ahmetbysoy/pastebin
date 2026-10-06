@@ -6,5 +6,7 @@ window.PASTE_CONFIG = {
   owner: 'ahmetbysoy',
   repo: 'pastebin',
   branch: 'pastes', // orphan branch used as storage
-  token: '', // paste the fine-grained PAT here (or use the token field in the UI)
+  // Fine-grained PAT, scoped to this repo only (Contents: read/write).
+  // Test token — expires in 1 day; rotate afterwards.
+  token: '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',
 };
