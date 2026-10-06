@@ -1,0 +1,75 @@
+name: Cleanup expired pastes
+
+on:
+  schedule:
+    - cron: '17 * * * *' # hourly
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout storage branch
+        uses: actions/checkout@v4
+        with:
+          ref: pastes
+          fetch-depth: 1
+
+      - name: Remove expired / invalid pastes
+        id: clean
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const now = Date.now();
+          const MAX_PASTES = 5000; // anti-spam cap
+          const valid = [];
+          let removed = 0;
+
+          for (const f of fs.readdirSync('.')) {
+            if (!/^[A-Za-z0-9_-]{6,64}\.json$/.test(f)) continue;
+            let keep = false;
+            try {
+              const stat = fs.statSync(f);
+              if (stat.size <= 5 * 1024 * 1024 + 65536) {
+                const p = JSON.parse(fs.readFileSync(f, 'utf8'));
+                const exp = Date.parse(p.expiresAt);
+                const created = Date.parse(p.createdAt);
+                keep =
+                  typeof p.content === 'string' &&
+                  p.id === f.replace(/\.json$/, '') &&
+                  !isNaN(exp) && !isNaN(created) &&
+                  exp > now &&                    // not expired
+                  exp - created <= 25 * 3600000;  // sane TTL
+              }
+            } catch { keep = false; }
+            if (keep) valid.push({ f, created: Date.parse(JSON.parse(fs.readFileSync(f, 'utf8')).createdAt) });
+            else { fs.unlinkSync(f); removed++; }
+          }
+
+          // Cap: drop the oldest pastes above MAX_PASTES
+          if (valid.length > MAX_PASTES) {
+            valid.sort((a, b) => a.created - b.created);
+            for (const { f } of valid.slice(0, valid.length - MAX_PASTES)) {
+              fs.unlinkSync(f); removed++;
+            }
+          }
+
+          console.log(`valid pastes kept: ${Math.min(valid.length, MAX_PASTES)}, removed: ${removed}`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `removed=${removed}\n`);
+          EOF
+
+      - name: Commit deletions
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "cleanup: remove expired/invalid pastes"
+            git push
+            echo "Cleanup committed."
+          else
+            echo "Nothing to clean."
+          fi
