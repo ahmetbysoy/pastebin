@@ -1,91 +1,65 @@
 # Minimal Paste
 
-24-hour pastebin: paste text, get a shareable URL, everything auto-deletes after 24 hours.
-No accounts, no file uploads, no build step. Single-file frontend, zero-config Vercel deployment.
+A **100% GitHub-hosted** pastebin: no Vercel, no servers, no accounts. Text in → shareable link out → auto-deleted after 24 hours. Built to be a frictionless tool for **humans and AI agents** alike.
 
-## Features
+## How it works
 
-- Text-only pastes, up to **5 MiB** (byte-based UTF-8 check on both client and server)
-- Unpredictable IDs (`crypto.randomBytes`, URL-safe base64)
-- Auto-expiration after **24 hours** (lazy check on every read + scheduled cleanup)
-- XSS-safe: paste content is rendered with `textContent` only and served with strict CSP / `nosniff`
-- `/raw/:id` returns `text/plain; charset=utf-8`
-- Rate limit: 5 creations per IP per 10 minutes (429 after)
-- `GET /api/health` health check
-
-## Routes
-
-| Route          | Description                 |
-| -------------- | --------------------------- |
-| `/`            | Create paste UI             |
-| `/p/:id`       | Paste viewer                |
-| `/raw/:id`     | Raw paste content           |
-| `/api/paste`   | `POST` create paste         |
-| `/api/health`  | Health check                |
-| `/api/cleanup` | Cleanup expired pastes      |
-
-## Local development
-
-```bash
-npm install
-npm run dev          # http://localhost:3000
+```
+User / AI agent
+     │ create paste (one GitHub API call, any repo-scoped token)
+     ▼
+GitHub repo "pastes" branch (orphan)   ← storage: one JSON file per paste
+     │
+     ├── read: raw.githubusercontent.com (public, no auth, CORS open)
+     ├── UI:   GitHub Pages (docs/index.html, single file, no build)
+     └── GitHub Actions (hourly cron): deletes expired/invalid pastes
 ```
 
-Without a token the dev server runs in **in-memory LOCAL MODE** so the full flow is testable offline.
+- **Storage**: orphan branch `pastes`, one file per paste (`<id>.json` with `id`, `content`, `createdAt`, `expiresAt`)
+- **Reads are 100% auth-free**: `https://raw.githubusercontent.com/ahmetbysoy/pastebin/pastes/<id>.json` — live seconds after creation
+- **Viewer**: `https://ahmetbysoy.github.io/pastebin/#<id>` (XSS-safe: content rendered via `textContent` only)
+- **24h expiry**: lazy check on every view + hourly cleanup workflow
+- **Limits**: 5 MiB (UTF-8 bytes), non-empty, unpredictable base64url ids, invalid files auto-purged, 5000-paste cap
 
-## Deploy to Vercel
+## Setup (one-time, ~5 minutes)
 
-1. Push this repo to GitHub and import it in Vercel (zero-config: `api/` functions + `public/` statics + `vercel.json`).
-2. **Create & connect a Blob store** (this is the step most people miss):
-   - Vercel Dashboard → **Storage** → **Create** → **Blob**
-   - Connect the store to your project, selecting the **Production** (and Preview) environments
-   - This auto-injects the `BLOB_READ_WRITE_TOKEN` environment variable
-3. Set `CRON_SECRET` in Project → Settings → Environment Variables (any random string).
-   Vercel Cron (`vercel.json`, every 30 min) sends it as `Authorization: Bearer` to `/api/cleanup`.
-4. **Redeploy.** Env vars added after the last deploy only take effect after a new deployment.
+1. **Create a fine-grained PAT**
+   GitHub → Settings → Developer settings → **Fine-grained tokens** → *Generate new token*:
+   - Repository access: **Only select repositories** → `ahmetbysoy/pastebin`
+   - Permissions → Repository permissions → **Contents: Read and write** (nothing else)
+   - Expiration: up to 1 year (renew & rotate when it expires)
 
-### Verify your Blob token
+2. **Put the token in `docs/config.js`** (`token: 'github_pat_...'`) and commit.
+   ⚠️ This token is **public by design** (it ships in the site JS). It can only read/write
+   files in *this* repo — that is the accepted trade-off for anonymous, frictionless paste
+   creation. Anyone can also bring their own token via the UI (stored in their localStorage only).
 
-```bash
-# put your token in .env.local, then:
-npm run test:blob
-```
+3. **Enable GitHub Pages**: repo → Settings → Pages → *Deploy from a branch* →
+   branch `main`, folder `/docs` → Save.
+   Site: `https://ahmetbysoy.github.io/pastebin/`
 
-It does a real `put → list → get → delete` round-trip and tells you exactly what's wrong.
+4. **Install the cleanup workflow**: copy `workflows/cleanup.yml` to `.github/workflows/cleanup.yml`
+   on `main` (e.g. via the web UI "Add file"). It runs hourly and on demand.
+   (The bot that maintains this repo cannot push workflow files — hence this manual step.)
 
-## Troubleshooting
+## For AI agents
 
-### `Vercel Blob: No token found. Either configure the BLOB_READ_WRITE_TOKEN environment variable...`
+See **[AGENTS.md](AGENTS.md)** — full create/read protocol with curl examples.
+TL;DR: read needs no auth (raw.githubusercontent), create is a single
+`PUT /repos/ahmetbysoy/pastebin/contents/<id>.json` on branch `pastes`.
 
-The env var is **not present in the running environment**. Causes:
+## Security model
 
-- The Blob store was never connected to the Vercel project (Dashboard → Storage → Connect Store), or
-- It was connected to the wrong environment (check Production vs Preview), or
-- You connected it after the last deploy → **redeploy** to pick it up, or
-- Locally: the token is missing from `.env.local` (restart the dev server after adding it).
+| Concern | Handling |
+| --- | --- |
+| XSS in paste content | Viewer renders `textContent` only; strict CSP meta; raw served as JSON |
+| Token abuse | Fine-grained PAT scoped to this repo only, Contents permission only; cleanup purges garbage; 5000-paste cap |
+| Secret leakage | No other secrets exist; `.env*` patterns gitignored |
+| Repo bloat | Pastes deleted within ~1h of expiry; `pastes` branch is orphan so history can be squashed/rebuilt if it ever grows large |
+| Spam | GitHub API rate limits per token + hourly validation/cleanup + paste cap |
 
-### Token looks wrong (`vcp_...` instead of `vercel_blob_rw_...`)
+## Project spec
 
-- `vcp_...` = **Vercel account access token** (for the Vercel API/CLI). It does NOT work with Blob.
-- `vercel_blob_rw_...` = **Blob store read/write token**. Get it from Dashboard → Storage → your store → *Connect Store* (or the `.env` tab).
-- If your code reads `BLOB_READ_WRITE_TOKEN` but Vercel created a prefixed variable like `MYSTORE_READ_WRITE_TOKEN`, this app accepts any `*_READ_WRITE_TOKEN` automatically.
-
-### 413 on very large pastes on Vercel
-
-Vercel's Node function request body limit is 4.5 MB on Hobby / 5 MB on Pro. The app enforces 5 MiB; on Hobby, pastes between 4.5–5 MB will be rejected by the platform before reaching the code.
-
-## Cleanup architecture
-
-Two layers (per spec):
-
-1. **Lazy expiration** — every read checks `expiresAt` and returns 404 for expired pastes.
-2. **Scheduled cleanup** — Vercel Cron calls `/api/cleanup` every 30 minutes (protected by `CRON_SECRET`).
-   Optional second safety net: copy `docs/github-workflows/cleanup.yml` to `.github/workflows/`
-   (kept out of `.github/` here due to repo permission limits; set `SITE_URL` and `CRON_SECRET` repo secrets to enable).
-   Same applies to `docs/github-workflows/health.yml` (periodic `/api/health` check).
-
-## Secrets
-
-- Never commit `.env*` files (already gitignored).
-- Required env vars: `BLOB_READ_WRITE_TOKEN`, `CRON_SECRET`.
-- GitHub Actions secrets (optional): `SITE_URL`, `CRON_SECRET`.
+The original task specification lives in [`pastebin.md`](pastebin.md).
+This implementation intentionally deviates in one point decided by the owner:
+storage is the GitHub repository itself instead of Vercel Blob (everything stays in GitHub).

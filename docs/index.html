@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self' https://api.github.com https://raw.githubusercontent.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'">
+<title>Minimal Paste</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: #0b0e14; color: #d7dde6;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 16px; gap: 14px;
+  }
+  h1 { font-size: 18px; letter-spacing: 4px; margin: 8px 0 0; color: #7aa2f7; font-weight: 700; }
+  h1 a { color: inherit; text-decoration: none; }
+  .card { width: 100%; max-width: 720px; background: #111623; border: 1px solid #1e2530; border-radius: 10px; overflow: hidden; }
+  textarea {
+    width: 100%; min-height: 300px; resize: vertical; border: 0; outline: none;
+    background: transparent; color: #d7dde6; padding: 16px; font: inherit; font-size: 14px; line-height: 1.55;
+  }
+  textarea::placeholder { color: #46536b; }
+  .sizebar { display: flex; justify-content: space-between; padding: 8px 16px; border-top: 1px solid #1e2530; font-size: 12px; color: #6b7686; }
+  .sizebar .over { color: #f7768e; font-weight: 600; }
+  button.primary {
+    font: inherit; font-size: 14px; letter-spacing: 2px; font-weight: 700;
+    padding: 12px 28px; border-radius: 8px; cursor: pointer;
+    border: 1px solid #2b3546; background: #7aa2f7; color: #0b0e14;
+  }
+  button.primary:disabled { opacity: .55; cursor: not-allowed; }
+  .hint { font-size: 12px; color: #6b7686; }
+  .status { width: 100%; max-width: 720px; min-height: 20px; font-size: 14px; text-align: center; }
+  .status.error { color: #f7768e; }
+  .status.success { color: #9ece6a; }
+  .result { display: none; width: 100%; max-width: 720px; text-align: center; background: #111623; border: 1px solid #1e2530; border-radius: 10px; padding: 20px 16px; }
+  .result.show { display: block; }
+  .result .url { font-size: 14px; color: #7aa2f7; word-break: break-all; margin: 10px 0 4px; }
+  .result .raw { font-size: 12px; word-break: break-all; margin: 0 0 12px; }
+  .result .raw a { color: #6b7686; }
+  .result button { font: inherit; font-size: 13px; padding: 8px 18px; border-radius: 6px; cursor: pointer; border: 1px solid #2b3546; background: #151b26; color: #d7dde6; }
+  .result .meta { font-size: 12px; color: #6b7686; margin-top: 12px; }
+  a { color: #7aa2f7; }
+  details { width: 100%; max-width: 720px; font-size: 13px; color: #6b7686; }
+  summary { cursor: pointer; }
+  details pre { background: #111623; border: 1px solid #1e2530; border-radius: 8px; padding: 12px; overflow-x: auto; font-size: 12px; color: #a9b1d6; }
+  details input[type=password] { width: 100%; max-width: 480px; font: inherit; font-size: 12px; padding: 8px; border-radius: 6px; border: 1px solid #2b3546; background: #0b0e14; color: #d7dde6; }
+  details button.small { font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 6px; border: 1px solid #2b3546; background: #151b26; color: #d7dde6; cursor: pointer; margin-left: 6px; }
+  .token-state { font-size: 12px; margin: 8px 0; }
+  .token-state .ok { color: #9ece6a; }
+  .token-state .warn { color: #e0af68; }
+  /* viewer */
+  .viewer-header { width: 100%; max-width: 720px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+  .viewer-header .id { color: #7aa2f7; font-weight: 600; }
+  .viewer-header .meta { color: #6b7686; font-size: 12px; }
+  .viewer-header .toolbar { display: flex; gap: 8px; }
+  .viewer-header a.btn, .viewer-header button.btn { font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 6px; border: 1px solid #2b3546; background: #151b26; color: #d7dde6; text-decoration: none; cursor: pointer; }
+  pre.viewer { width: 100%; max-width: 720px; margin: 0; background: #111623; border: 1px solid #1e2530; border-radius: 10px; padding: 16px; white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.55; overflow: auto; max-height: 70vh; }
+  .notice { color: #e0af68; padding: 24px; text-align: center; width: 100%; max-width: 720px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <h1><a href="#">MINIMAL PASTE</a></h1>
+
+  <!-- ============ CREATE VIEW ============ -->
+  <div id="view-create" style="display:contents">
+    <div class="card">
+      <textarea id="content" placeholder="Paste your text here..." spellcheck="false"></textarea>
+      <div class="sizebar"><span id="size">0 B / 5 MB</span><span>UTF-8 · stored on GitHub · public</span></div>
+    </div>
+    <button class="primary" id="create" type="button">CREATE PASTE</button>
+    <div class="hint">Deletes automatically after 24 hours</div>
+    <div class="status" id="status" role="status"></div>
+
+    <div class="result" id="result">
+      <div>PASTE CREATED</div>
+      <div class="url"><a id="paste-url" href="#" target="_blank" rel="noopener"></a></div>
+      <div class="raw">raw: <a id="raw-url" href="#" target="_blank" rel="noopener"></a></div>
+      <button id="copy" type="button">COPY LINK</button>
+      <div class="meta" id="expires"></div>
+    </div>
+
+    <details id="setup">
+      <summary>Setup / token (click to expand)</summary>
+      <div class="token-state" id="token-state"></div>
+      <p>You can paste any GitHub fine-grained PAT with <b>Contents: read/write</b> on this repo.
+      It is stored only in your browser (localStorage), never sent anywhere except api.github.com.</p>
+      <input type="password" id="token-input" placeholder="github_pat_..." autocomplete="off">
+      <button class="small" id="token-save" type="button">Save</button>
+      <button class="small" id="token-clear" type="button">Clear</button>
+      <h3 style="color:#a9b1d6">For AI agents / curl</h3>
+      <pre id="agent-snippet"></pre>
+    </details>
+  </div>
+
+  <!-- ============ VIEWER ============ -->
+  <div id="view-read" hidden>
+    <div class="viewer-header">
+      <div><span class="id" id="v-id"></span> <span class="meta" id="v-meta"></span></div>
+      <div class="toolbar">
+        <a class="btn" id="v-raw" href="#" target="_blank" rel="noopener">Raw</a>
+        <button class="btn" id="v-copy" type="button">Copy content</button>
+        <a class="btn" href="#">New paste</a>
+      </div>
+    </div>
+    <div class="notice" id="v-notice" hidden></div>
+    <pre class="viewer" id="v-content"></pre>
+  </div>
+
+<script src="config.js"></script>
+<script>
+(function () {
+  'use strict';
+  var LIMIT = 5 * 1024 * 1024; // 5 MiB, UTF-8 byte-based
+  var TTL_MS = 24 * 60 * 60 * 1000;
+
+  var cfg = Object.assign({ owner: 'ahmetbysoy', repo: 'pastebin', branch: 'pastes', token: '' }, window.PASTE_CONFIG || {});
+  var LS_TOKEN = 'minimalPasteToken';
+
+  function getToken() {
+    var t = '';
+    try { t = localStorage.getItem(LS_TOKEN) || ''; } catch (e) {}
+    return (t || cfg.token || '').trim();
+  }
+  function apiFile(id) { return 'https://api.github.com/repos/' + cfg.owner + '/' + cfg.repo + '/contents/' + encodeURIComponent(id) + '.json'; }
+  function rawFile(id) { return 'https://raw.githubusercontent.com/' + cfg.owner + '/' + cfg.repo + '/' + cfg.branch + '/' + encodeURIComponent(id) + '.json'; }
+  function pageUrl(id) { return location.origin + location.pathname + '#' + id; }
+
+  function byteSize(str) {
+    try { return new Blob([str]).size; } catch (e) { return new TextEncoder().encode(str).length; }
+  }
+  function fmt(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+  function newId() {
+    var b = new Uint8Array(9);
+    crypto.getRandomValues(b);
+    var s = ''; b.forEach(function (x) { s += String.fromCharCode(x); });
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function bytesToBase64(bytes) {
+    var bin = '', CHUNK = 0x8000;
+    for (var i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(bin);
+  }
+
+  // ---------- create view ----------
+  var ta = document.getElementById('content');
+  var sizeEl = document.getElementById('size');
+  var btn = document.getElementById('create');
+  var statusEl = document.getElementById('status');
+  var resultEl = document.getElementById('result');
+  var creating = false;
+
+  function setState(state, msg) {
+    statusEl.className = 'status ' + state;
+    statusEl.textContent = msg || '';
+    btn.disabled = creating;
+    btn.textContent = creating ? 'CREATING…' : 'CREATE PASTE';
+  }
+
+  ta.addEventListener('input', function () {
+    var n = byteSize(ta.value);
+    sizeEl.textContent = fmt(n) + ' / 5 MB';
+    sizeEl.classList.toggle('over', n > LIMIT);
+  });
+
+  function friendlyError(status, msg) {
+    if (status === 401) return 'GitHub rejected the token. Check Setup below.';
+    if (status === 403) return 'Token lacks permission (needs Contents: read/write on this repo), or GitHub rate limit hit.';
+    if (status === 429) return 'GitHub rate limit reached. Try again in a minute.';
+    if (status === 413 || status === 422) return msg || 'Paste could not be created.';
+    return 'Paste could not be created. Please try again.';
+  }
+
+  async function putPaste(id, content) {
+    var payload = {
+      id: id,
+      content: content, // stored as-is, no mutation
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + TTL_MS).toISOString(),
+    };
+    var b64 = bytesToBase64(new TextEncoder().encode(JSON.stringify(payload)));
+    var r = await fetch(apiFile(id), {
+      method: 'PUT',
+      headers: {
+        Authorization: 'Bearer ' + getToken(),
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message: 'paste: ' + id, content: b64, branch: cfg.branch }),
+    });
+    return { status: r.status, payload: payload };
+  }
+
+  btn.addEventListener('click', async function () {
+    if (creating) return; // anti-spam: one request at a time
+    var content = ta.value;
+    if (content.trim().length === 0) return setState('error', 'Paste cannot be empty.');
+    var n = byteSize(content);
+    if (n > LIMIT) return setState('error', 'Paste is too large. Limit is 5 MB.');
+    if (!getToken()) return setState('error', 'No GitHub token configured. Open Setup below and add one.');
+
+    creating = true;
+    resultEl.classList.remove('show');
+    setState('creating', 'Creating paste…');
+    try {
+      var id = newId();
+      var res = await putPaste(id, content);
+      if (res.status === 422) { // astronomically unlikely id collision -> one retry
+        id = newId();
+        res = await putPaste(id, content);
+      }
+      if (res.status !== 201) return setState('error', friendlyError(res.status));
+      var pu = pageUrl(id), ru = rawFile(id);
+      document.getElementById('paste-url').href = pu;
+      document.getElementById('paste-url').textContent = pu;
+      document.getElementById('raw-url').href = ru;
+      document.getElementById('raw-url').textContent = ru;
+      document.getElementById('expires').textContent =
+        'Expires in 24 hours (' + new Date(res.payload.expiresAt).toLocaleString() + ')';
+      resultEl.classList.add('show');
+      setState('success', 'Paste created.');
+    } catch (e) {
+      setState('error', 'Network error. Paste could not be created. Please try again.');
+    } finally {
+      creating = false;
+      if (!statusEl.classList.contains('error')) setState('success', statusEl.textContent);
+      else btn.disabled = false, btn.textContent = 'CREATE PASTE';
+    }
+  });
+
+  document.getElementById('copy').addEventListener('click', function () {
+    copyText(document.getElementById('paste-url').href, this, 'COPY LINK');
+  });
+
+  function copyText(text, btn, label) {
+    function done() { btn.textContent = 'COPIED!'; setTimeout(function () { btn.textContent = label; }, 1500); }
+    function fallback() {
+      var tmp = document.createElement('input');
+      tmp.value = text; document.body.appendChild(tmp); tmp.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      tmp.remove(); done();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  }
+
+  // ---------- token setup ----------
+  function renderTokenState() {
+    var el = document.getElementById('token-state');
+    var local = '';
+    try { local = localStorage.getItem(LS_TOKEN) || ''; } catch (e) {}
+    if (local) el.innerHTML = 'Token source: <span class="ok">your browser (localStorage)</span>';
+    else if (cfg.token) el.innerHTML = 'Token source: <span class="ok">embedded config (public, repo-scoped)</span>';
+    else el.innerHTML = 'Token source: <span class="warn">none — paste a token below</span>';
+  }
+  document.getElementById('token-save').addEventListener('click', function () {
+    var v = document.getElementById('token-input').value.trim();
+    if (!v) return;
+    try { localStorage.setItem(LS_TOKEN, v); } catch (e) {}
+    document.getElementById('token-input').value = '';
+    renderTokenState();
+  });
+  document.getElementById('token-clear').addEventListener('click', function () {
+    try { localStorage.removeItem(LS_TOKEN); } catch (e) {}
+    renderTokenState();
+  });
+
+  // ---------- agent snippet ----------
+  document.getElementById('agent-snippet').textContent =
+'# read (no auth needed)\ncurl https://raw.githubusercontent.com/' + cfg.owner + '/' + cfg.repo + '/' + cfg.branch + '/<id>.json\n\n' +
+'# create (needs any GitHub token with Contents:write on this repo)\n' +
+'ID=$(openssl rand -base64 9 | tr "+/" "-_" | tr -d "=")\n' +
+'printf %s "$CONTENT" | jq -Rs --arg id "$ID" --arg now "$(date -u +%FT%TZ)" \'\n' +
+'  {id:$id, content:., createdAt:$now, expiresAt:($now|fromdateiso8601+86400|todate)}\' > /tmp/paste.json\n' +
+'jq -n --rawfile c /tmp/paste.json \'{message:("paste: "+env.ID), content:($c|@base64), branch:"' + cfg.branch + '\'}\' \\\n' +
+'  | curl -s -X PUT -H "Authorization: Bearer $GITHUB_TOKEN" \\\n' +
+'      -d @- https://api.github.com/repos/' + cfg.owner + '/' + cfg.repo + '/contents/$ID.json\n' +
+'echo "URL: https://' + cfg.owner + '.github.io/' + cfg.repo + '/#$ID"';
+
+  // ---------- viewer ----------
+  async function renderViewer(id) {
+    var notice = document.getElementById('v-notice');
+    var content = document.getElementById('v-content');
+    document.getElementById('v-id').textContent = '#' + id;
+    document.getElementById('v-raw').href = rawFile(id);
+    notice.hidden = true; content.textContent = '';
+    document.getElementById('v-meta').textContent = 'loading…';
+
+    var data = null, triedFallback = false;
+    try {
+      var r = await fetch(rawFile(id), { cache: 'no-store' });
+      if (r.ok) data = await r.json();
+      else if (r.status !== 404 && getToken()) { // fallback via API (works for private repos too)
+        triedFallback = true;
+        var r2 = await fetch(apiFile(id) + '?ref=' + cfg.branch, { headers: { Authorization: 'Bearer ' + getToken(), Accept: 'application/vnd.github.raw+json' } });
+        if (r2.ok) data = await r2.json();
+      }
+    } catch (e) { /* network error */ }
+
+    if (!data) {
+      notice.textContent = 'Paste not found or expired.';
+      notice.hidden = false;
+      document.getElementById('v-meta').textContent = '';
+      return;
+    }
+    var exp = Date.parse(data.expiresAt);
+    if (!isNaN(exp) && exp <= Date.now()) {
+      notice.textContent = 'This paste has expired (it lived 24 hours).';
+      notice.hidden = false;
+      document.getElementById('v-meta').textContent = '';
+      return;
+    }
+    // Safe render: textContent only — user content is never parsed as HTML.
+    content.textContent = typeof data.content === 'string' ? data.content : JSON.stringify(data, null, 2);
+    if (!isNaN(exp)) {
+      var hours = Math.max(0, Math.round((exp - Date.now()) / 3600000 * 10) / 10);
+      document.getElementById('v-meta').textContent = 'expires in ~' + hours + 'h';
+    }
+  }
+  document.getElementById('v-copy').addEventListener('click', function () {
+    copyText(document.getElementById('v-content').textContent, this, 'Copy content');
+  });
+
+  // ---------- routing ----------
+  function route() {
+    var id = location.hash.replace(/^#/, '');
+    var valid = /^[A-Za-z0-9_-]{6,64}$/.test(id);
+    document.getElementById('view-create').hidden = valid;
+    document.getElementById('view-read').hidden = !valid;
+    if (valid) renderViewer(id);
+  }
+  window.addEventListener('hashchange', route);
+  renderTokenState();
+  route();
+})();
+</script>
+</body>
+</html>
